@@ -6,9 +6,9 @@ import json
 import pandas as pd
 import os
 
-st.set_page_config(page_title="수암명리 자동 분석 시스템", layout="wide")
+st.set_page_config(page_title="autobook", layout="wide")
 
-st.title("🔍 수암명리 사주 자동 분석기")
+st.title("🔍 auto")
 
 input_mode = st.radio("입력 방법 선택", ["직접 입력", "파일 업로드"])
 
