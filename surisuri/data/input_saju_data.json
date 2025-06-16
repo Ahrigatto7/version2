@@ -1,0 +1,20 @@
+{
+  "id": "sample_001",
+  "created_at": "2025-06-16",
+  "client_name": "홍길동",
+  "birth": {
+    "solar": "1988-04-22",
+    "lunar": "1988-03-07",
+    "gender": "남"
+  },
+  "saju": {
+    "천간": ["戊", "庚", "壬", "丙"],
+    "지지": ["辰", "辰", "辰", "午"]
+  },
+  "options": {
+    "analyze_gpt": true,
+    "analyze_rules": true,
+    "show_visual": true
+  },
+  "memo": "사업 전환 시기와 혼인운이 궁금함"
+}
