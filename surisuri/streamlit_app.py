@@ -1,5 +1,5 @@
 import streamlit as st
-from gpt_handler import analyze_long_text
+from gpt_handler import analyze_long_text as ana
 from rule_engine import apply_rules_to_chart, load_rules, analyze_with_rules
 from visualizer import show_visualizations
 import json
