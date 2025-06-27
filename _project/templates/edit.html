@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>수정</title>
+</head>
+<body>
+  <h1>✏️ 개념 수정</h1>
+  <form method="post">
+    이름: <input name="name" value="{{ item.name }}"><br>
+    책: <input name="book" value="{{ ','.join(item.book) }}"><br>
+    개념: <input name="concept" value="{{ ','.join(item.concept) }}"><br>
+    용어: <input name="term" value="{{ ','.join(item.term) }}"><br>
+    <button type="submit">저장</button>
+  </form>
+</body>
+</html>

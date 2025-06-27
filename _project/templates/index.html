@@ -1,0 +1,22 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+    <title>사주 분석</title>
+    <meta charset="UTF-8">
+</head>
+<body>
+    <h1>사주 분석기</h1>
+    <form method="POST" action="/analyze">
+        <label>생년월일: <input type="date" name="birthdate" required></label><br><br>
+        <label>성별: 
+            <select name="gender">
+                <option value="M">남자</option>
+                <option value="F">여자</option>
+            </select>
+        </label><br><br>
+        <label>출생 시간 (0~23시): <input type="number" name="time" min="0" max="23" required></label><br><br>
+        <button type="submit">사주 분석</button>
+    </form>
+</body>
+</html>

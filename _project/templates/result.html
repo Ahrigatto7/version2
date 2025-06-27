@@ -1,0 +1,33 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+    <title>분석 결과</title>
+    <meta charset="UTF-8">
+</head>
+<body>
+    <h1>사주 분석 결과</h1>
+    <p><strong>음력 생일:</strong> {{ result.lunar_date }}</p>
+    <p><strong>절기:</strong> {{ result.term }}</p>
+    <p><strong>사주팔자:</strong> {{ result.year_ganji }} {{ result.month_ganji }} {{ result.day_ganji }} {{ result.hour_ganji }}</p>
+    <p><strong>오행 분석:</strong></p>
+    <ul>
+        {% for k, v in result.ohaeng.items() %}
+            <li>{{ k }}: {{ v }}</li>
+        {% endfor %}
+    </ul>
+    <p><strong>대운 (10년 운세):</strong></p>
+    <ul>
+        {% for d in result.daewoon %}
+            <li>{{ d }}</li>
+        {% endfor %}
+    </ul>
+    <br>
+    <form action="/download_pdf" method="post">
+        <input type="hidden" name="birthdate" value="{{ request.form.birthdate }}">
+        <input type="hidden" name="gender" value="{{ request.form.gender }}">
+        <input type="hidden" name="time" value="{{ request.form.time }}">
+        <button type="submit">PDF 리포트 다운로드</button>
+    </form>
+</body>
+</html>
