@@ -1,0 +1,14 @@
+streamlit
+pandas
+openai
+korean-lunar-calendar
+python-docx
+PyPDF2
+streamlit-feedback
+langchain
+langchain-openai
+langchain-community
+tavily-python
+transformers
+torch
+sentencepiece
