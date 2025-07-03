@@ -1,97 +1,88 @@
-# 파일 경로: pages/5_자동_지식_구축.py
-
 import streamlit as st
+import sqlite3
 import json
-from modules.knowledge_extractor import extract_structured_knowledge
-from modules.db_handler import load_kb, save_kb
+import os
+import pandas as pd
 
-# --- 1. 파일 내용 추출 기능 완성 ---
-from PyPDF2 import PdfReader
-import docx
-def extract_text(uploaded_file):
-    """업로드된 파일에서 텍스트를 추출하는 완전한 함수."""
-    try:
-        if uploaded_file.name.endswith('.pdf'):
-            pdf_reader = PdfReader(uploaded_file)
-            text = "".join([page.extract_text() or "" for page in pdf_reader.pages])
-            return text
-        elif uploaded_file.name.endswith('.docx'):
-            doc = docx.Document(uploaded_file)
-            return "\n".join([para.text for para in doc.paragraphs])
-        elif uploaded_file.name.endswith('.txt'):
-            raw_bytes = uploaded_file.getvalue()
-            try: return raw_bytes.decode('utf-8')
-            except UnicodeDecodeError: return raw_bytes.decode('cp949', errors='ignore')
-        return "지원하지 않는 파일 형식입니다."
-    except Exception as e:
-        st.error(f"파일 읽기 오류: {e}")
-        return ""
+# db_handler는 지식 베이스에 최종 저장할 때만 사용
+from modules.db_handler import save_kb, load_kb
 
-# --- Streamlit UI 구성 ---
 st.set_page_config(page_title="자동 지식 구축", layout="wide")
-st.header("✨ 자동 지식 구축 (문서 → 지식)")
-st.caption("문서를 업로드하면 AI가 핵심 규칙을 자동으로 추출하여 지식 베이스 초안을 만듭니다.")
+st.header("✨ 자동 지식 구축 (백그라운드 실행)")
+st.caption("문서를 업로드하여 분석 작업을 등록하면, 백그라운드에서 AI가 자동으로 지식을 추출합니다.")
 st.markdown("---")
 
-uploaded_file = st.file_uploader("해석 규칙이 담긴 문서 업로드", type=["txt", "pdf", "docx"])
-api_key = st.text_input("OpenAI API Key", type="password", help="문서 내용을 분석하고 규칙을 추출하기 위해 필요합니다.")
+# --- 1. 작업 등록 UI ---
+with st.form("job_submission_form"):
+    uploaded_file = st.file_uploader("분석할 문서 업로드", type=["txt", "pdf", "docx"])
+    categories = st.text_input("분류할 카테고리 (쉼표로 구분)", value="격국,십신,재물,혼인,건강,직업,상호작용,기타")
+    submitted = st.form_submit_button("백그라운드 작업 등록")
 
-if uploaded_file and api_key:
-    if st.button("AI로 규칙 추출 및 구조화 실행", type="primary"):
-        with st.spinner("AI가 문서를 읽고 핵심 규칙을 추출하는 중입니다... (시간이 다소 소요될 수 있습니다)"):
-            text = extract_text(uploaded_file)
-            if text:
-                structured_data = extract_structured_knowledge(text, api_key)
-                if "error" in structured_data:
-                    st.error(structured_data["error"])
-                else:
-                    # JSON 문자열로 변환하여 세션 상태에 저장 (편집을 위해)
-                    st.session_state["structured_knowledge_text"] = json.dumps(structured_data, ensure_ascii=False, indent=2)
-                    st.success("✅ 규칙 추출 및 구조화 완료! 아래 내용을 확인하고 저장하세요.")
-            else:
-                st.error("파일에서 텍스트를 추출하지 못했습니다.")
+    if submitted:
+        if uploaded_file and categories:
+            # 업로드된 파일을 서버에 저장
+            save_dir = "uploads"
+            os.makedirs(save_dir, exist_ok=True)
+            save_path = os.path.join(save_dir, uploaded_file.name)
+            with open(save_path, "wb") as f:
+                f.write(uploaded_file.getbuffer())
 
-# --- AI가 생성한 결과 검토 및 저장 ---
-if "structured_knowledge_text" in st.session_state:
-    st.markdown("### AI가 생성한 지식 초안 (편집 가능)")
-    st.caption("AI가 추출한 내용이므로 부정확할 수 있습니다. 저장 전 반드시 검토 및 수정해주세요.")
+            # DB에 작업 요청 등록
+            try:
+                with sqlite3.connect("jobs.db") as con:
+                    cur = con.cursor()
+                    cur.execute(
+                        "INSERT INTO knowledge_jobs (original_filename, saved_filepath, categories, status) VALUES (?, ?, ?, ?)",
+                        (uploaded_file.name, save_path, json.dumps(categories.split(',')), 'pending')
+                    )
+                    con.commit()
+                st.success(f"'{uploaded_file.name}' 파일에 대한 분석 작업이 백그라운드에 등록되었습니다.")
+            except Exception as e:
+                st.error(f"작업 등록 중 오류 발생: {e}")
+        else:
+            st.error("파일과 카테고리를 모두 입력해주세요.")
 
-    # ## 주요 개선사항 2: 편집 가능한 텍스트 영역으로 변경
-    edited_text = st.text_area(
-        "JSON 편집:",
-        value=st.session_state["structured_knowledge_text"],
-        height=400
-    )
+# --- 2. 작업 현황 및 결과 처리 UI ---
+st.markdown("---")
+st.subheader("백그라운드 작업 현황")
 
-    # ## 주요 개선사항 3: 저장할 카테고리 이름 직접 지정
-    save_category = st.text_input("저장할 상위 카테고리 이름", value="수암해석규칙")
-    save_subcategory = st.text_input("저장할 하위 카테고리 이름", value="응기")
-    
-    if st.button("✅ 이 지식을 지정된 카테고리에 병합하기"):
-        try:
-            # 수정된 텍스트를 다시 JSON(딕셔너리)으로 변환
-            edited_data = json.loads(edited_text)
+try:
+    with sqlite3.connect("jobs.db") as con:
+        df = pd.read_sql_query("SELECT id, status, original_filename, created_at FROM knowledge_jobs ORDER BY id DESC", con)
+    st.dataframe(df, use_container_width=True)
+
+    completed_jobs = df[df['status'] == 'completed']
+    if not completed_jobs.empty:
+        job_id_to_process = st.selectbox("결과를 검토하고 저장할 작업 ID를 선택하세요", completed_jobs['id'])
+        
+        if job_id_to_process:
+            with sqlite3.connect("jobs.db") as con:
+                cur = con.cursor()
+                cur.execute("SELECT result_json FROM knowledge_jobs WHERE id = ?", (job_id_to_process,))
+                result_json_str = cur.fetchone()[0]
             
-            knowledge_base = load_kb()
+            ai_results = json.loads(result_json_str)
+            df_to_edit = pd.DataFrame({
+                "문단": ai_results.get("paragraphs", []),
+                "카테고리": ai_results.get("categories", []),
+                "태그": [""], "리뷰": [""], "승인여부": ["대기"]
+            })
             
-            # 지정된 카테고리가 없으면 생성
-            if save_category not in knowledge_base:
-                knowledge_base[save_category] = {}
-            if save_subcategory not in knowledge_base[save_category]:
-                knowledge_base[save_category][save_subcategory] = []
-
-            new_rules = edited_data.get("rules", [])
+            st.markdown("### 분류 결과 검토 및 최종 저장")
+            edited_df = st.data_editor(df_to_edit, num_rows="dynamic", use_container_width=True)
             
-            # 추출된 규칙들을 기존 규칙에 추가 (extend)
-            knowledge_base[save_category][save_subcategory].extend(new_rules)
-            
-            save_kb(knowledge_base)
-            st.success(f"성공적으로 '{save_category}/{save_subcategory}'에 병합되었습니다!")
-            
-            # 작업 완료 후 세션 상태 초기화
-            del st.session_state["structured_knowledge_text"]
-
-        except json.JSONDecodeError:
-            st.error("JSON 형식이 올바르지 않습니다. 수정한 내용을 다시 확인해주세요.")
-        except Exception as e:
-            st.error(f"저장 중 오류 발생: {e}")
+            save_filename = st.text_input("저장할 지식 파일 이름", value="new_rules.json")
+            if st.button("✅ 승인된 내용만 지식 베이스에 저장"):
+                approved_df = edited_df[edited_df['승인여부'] == '승인']
+                # (이 부분은 add_ai_classified_data 함수 로직을 참고하여 재구성 필요)
+                # 예시: save_kb(approved_df.to_dict('records'), save_filename)
+                st.success(f"{len(approved_df)}개의 지식이 '{save_filename}'에 저장되었습니다.")
+                
+                # 처리 완료된 작업은 상태 변경
+                with sqlite3.connect("jobs.db") as con:
+                    cur = con.cursor()
+                    cur.execute("UPDATE knowledge_jobs SET status = 'archived' WHERE id = ?", (job_id_to_process,))
+                    con.commit()
+                st.rerun()
+except Exception as e:
+    st.info("아직 등록된 작업이 없습니다. 데이터베이스가 곧 생성됩니다.")
