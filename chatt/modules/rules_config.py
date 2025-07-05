@@ -1,73 +1,68 @@
-# chatt/modules/rules_config.py
+import os, json, re
 
-import os
-
-def read_txt_md(filename):
+# 1. 파일 파서
+def read_lines(filename):
     with open(filename, encoding='utf-8') as f:
-        return [line.strip() for line in f.readlines() if line.strip()]
+        return [line.strip() for line in f if line.strip()]
 
-def read_docx(filename):
-    from docx import Document
-    doc = Document(filename)
-    return [para.text.strip() for para in doc.paragraphs if para.text.strip()]
+# 2. 군집화/블록화
+def blockify(lines, filename):
+    blocks, block = [], None
+    for line in lines:
+        if re.match(r'^<사례\s*\d+>|^사례\d*[\):]', line):
+            if block: blocks.append(block)
+            block = {"type":"사례", "title":line, "팔자":[], "대운":[], "본문":[], "tags":[], "meta":{"source":filename}}
+        elif block:
+            if re.match(r"^[甲乙丙丁戊己庚辛壬癸⼀-⿕]+.*[(乾)(坤)]?$", line): block["팔자"].append(line)
+            elif re.match(r"^[戌亥子丑寅卯申未午酉辰巳⺒]+$", line): block["팔자"].append(line)
+            elif line.startswith("대운"): continue
+            elif re.match(r"^[甲乙丙丁戊己庚辛壬癸⼀-⿕]+", line): block["대운"].append(line)
+            elif re.match(r"^[戌亥子丑寅卯申未午酉辰巳⺒]+", line): block["대운"].append(line)
+            elif "제압방식" in line or "구조" in line or "格" in line:
+                block["tags"].extend(re.findall(r"[傷官印財比劫官殺格構造제압적포귀격합충파형穿墓공망운응기생극화허투]", line))
+                block["본문"].append(line)
+            else: block["본문"].append(line)
+        else:
+            blocks.append({"type":"해설문", "text":line, "meta":{"source":filename}})
+    if block: blocks.append(block)
+    for b in blocks:
+        if "tags" in b: b["tags"] = list(set(b["tags"]))
+    return blocks
 
-def read_pdf(filename):
-    import pdfplumber
-    lines = []
-    with pdfplumber.open(filename) as pdf:
-        for page in pdf.pages:
-            text = page.extract_text()
-            if text:
-                lines.extend([line.strip() for line in text.split('\n') if line.strip()])
-    return lines
+# 3. 중복제거/병합
+def merge_blocks(existing, new):
+    seen, merged = set(), []
+    for b in existing + new:
+        key = json.dumps(b, ensure_ascii=False, sort_keys=True)
+        if key not in seen:
+            merged.append(b)
+            seen.add(key)
+    return merged
 
-def read_file_auto(filename):
-    if filename.lower().endswith('.txt') or filename.lower().endswith('.md'):
-        return read_txt_md(filename)
-    elif filename.lower().endswith('.docx'):
-        return read_docx(filename)
-    elif filename.lower().endswith('.pdf'):
-        return read_pdf(filename)
-    else:
-        raise Exception('지원하지 않는 파일 포맷입니다.')
-
-# 예시 명리 파싱 (실전 활용시 문서 포맷에 맞게 직접 구현!)
-def parse_myungri(lines):
-    # 아래는 샘플, 실제 데이터 포맷에 맞춰 커스터마이즈!
-    data = {
-        "원국.일지": "축",
-        "세운.지지": "진",
-        "원국.십신": ["편관", "정관", "편인"]
-    }
-    return data
-
-# 규칙 목록 예시
-RULES = [
-    {
-        "name": "일지합+편관존재",
-        "conditions": [
-            {"target": "원국.일지", "relation": "합", "with": "세운.지지", "value": ["축", "진"]},
-            {"target": "원국.십신", "relation": "존재", "value": "편관"}
-        ],
-        "outcome": "일지와 세운이 합, 편관이 있으면 직업·관계의 변동 가능성."
-    },
-    # 추가 규칙 계속 추가 가능!
+# 4. RULES 예시 (UI에서 동적 추가도 가능)
+DEFAULT_RULES = [
+    {"keyword": "직업", "label": "진로"},
+    {"keyword": "관계", "label": "대인관계"},
 ]
 
-def check_condition(cond, doc_data):
-    rel = cond['relation']
-    if rel == '합':
-        return doc_data.get(cond['target']) in cond['value']
-    elif rel == '존재':
-        return cond['value'] in doc_data.get(cond['target'], [])
-    elif rel == '개수':
-        v = cond['value']
-        return doc_data.get(cond['target'], []).count(v['십신명']) >= v.get('최소', 1)
-    return False
+def apply_rules(blocks, rules):
+    for b in blocks:
+        tags = set(b.get('tags', []))
+        for rule in rules:
+            if '본문' in b and any(rule['keyword'] in txt for txt in b['본문']):
+                tags.add(rule['label'])
+        b['tags'] = list(tags)
+    return blocks
 
-def check_rules(doc_data):
-    results = []
-    for rule in RULES:
-        if all(check_condition(cond, doc_data) for cond in rule['conditions']):
-            results.append({"name": rule['name'], "outcome": rule['outcome']})
-    return results
+# 5. AI 요약/해설 (openai 필요)
+def ai_generate(text, openai_key, prompt="이 내용을 명리 용어로 간단 요약:"):
+    import openai
+    openai.api_key = openai_key
+    resp = openai.ChatCompletion.create(
+        model="gpt-3.5-turbo",
+        messages=[
+            {"role":"system", "content": prompt},
+            {"role":"user", "content": text}
+        ]
+    )
+    return resp.choices[0].message.content.strip()
